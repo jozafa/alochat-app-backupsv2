@@ -1,0 +1,444 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { api, type BackupsResponse, type Cleaning, type Job, type RestoreResult } from './api';
+import { fmtDate, fmtDateTime } from './format';
+import type { View } from './App';
+
+const JOB_LABELS: Record<string, string> = {
+  full: 'Backup completo',
+  range: 'Backup por período',
+  daily: 'Rotina diária',
+  cleaning: 'Backup preventivo de limpeza',
+};
+
+export default function Dashboard({
+  setView,
+  onLogout,
+}: {
+  setView: (v: View) => void;
+  onLogout: () => void;
+}) {
+  const [data, setData] = useState<BackupsResponse | null>(null);
+  const [cleaning, setCleaning] = useState<Cleaning | null>(null);
+  const [job, setJob] = useState<Job | null>(null);
+  const [search, setSearch] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [page, setPage] = useState(1);
+  const [error, setError] = useState('');
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [restoring, setRestoring] = useState(false);
+  const [restoreResults, setRestoreResults] = useState<RestoreResult[] | null>(null);
+  const prevJobStatus = useRef<string | null>(null);
+
+  const loadBackups = useCallback(async () => {
+    const params = new URLSearchParams({ page: String(page) });
+    if (appliedSearch) params.set('search', appliedSearch);
+    if (startDate) params.set('startDate', startDate);
+    if (endDate) params.set('endDate', endDate);
+    try {
+      setData(await api<BackupsResponse>(`/api/backups?${params}`));
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao carregar backups');
+    }
+  }, [page, appliedSearch, startDate, endDate]);
+
+  useEffect(() => {
+    void loadBackups();
+  }, [loadBackups]);
+
+  useEffect(() => {
+    api<{ cleaning: Cleaning | null }>('/api/cleaning')
+      .then((r) => setCleaning(r.cleaning))
+      .catch(() => undefined);
+  }, []);
+
+  // Polling do job: a cada 2,5s enquanto houver job rodando; recarrega a lista ao terminar.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    let cancelled = false;
+    async function poll() {
+      try {
+        const { job: j } = await api<{ job: Job | null }>('/api/jobs/current');
+        if (cancelled) return;
+        setJob(j);
+        if (prevJobStatus.current === 'running' && j?.status !== 'running') void loadBackups();
+        prevJobStatus.current = j?.status ?? null;
+        timer = setTimeout(poll, j?.status === 'running' ? 2500 : 10000);
+      } catch {
+        timer = setTimeout(poll, 10000);
+      }
+    }
+    void poll();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [loadBackups]);
+
+  async function startJob(path: string, body?: unknown) {
+    try {
+      await api(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined });
+      const { job: j } = await api<{ job: Job | null }>('/api/jobs/current');
+      setJob(j);
+      prevJobStatus.current = j?.status ?? null;
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao iniciar backup');
+    }
+  }
+
+  function runFull() {
+    if (
+      window.confirm(
+        'Iniciar o backup completo de todos os atendimentos da instância? Este processo pode demorar.'
+      )
+    ) {
+      void startJob('/api/backups/full');
+    }
+  }
+
+  function runRange() {
+    if (!startDate || !endDate) {
+      setError('Preencha Data Inicial e Data Final para o backup por período.');
+      return;
+    }
+    void startJob('/api/backups/range', { startDate, endDate });
+  }
+
+  async function restoreSelected() {
+    const ids = [...selected].sort((a, b) => a - b);
+    if (ids.length === 0) return;
+    if (
+      !window.confirm(
+        `Restaurar ${ids.length} atendimento(s) na instância AlôChat?\n\n` +
+          'Atenção: cada atendimento restaurado recebe um NOVO ID sequencial (o ID original é sempre ignorado) ' +
+          'e passa a ser tratado como o mais recente pela limpeza automática da instância.'
+      )
+    ) {
+      return;
+    }
+    setRestoring(true);
+    setRestoreResults(null);
+    try {
+      const r = await api<{ results: RestoreResult[]; aborted: boolean }>('/api/restore', {
+        method: 'POST',
+        body: JSON.stringify({ ids }),
+      });
+      setRestoreResults(r.results);
+      setSelected(new Set());
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao restaurar');
+    } finally {
+      setRestoring(false);
+    }
+  }
+
+  function toggleSelected(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const items = data?.items ?? [];
+  const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / (data?.pageSize ?? 20)));
+  const running = job?.status === 'running';
+  const allOnPageSelected = items.length > 0 && items.every((c) => selected.has(c.id));
+
+  return (
+    <div className="max-w-6xl mx-auto p-6">
+      <div className="flex items-start justify-between">
+        <h1 className="text-2xl font-bold text-gray-900 mb-4">Gerenciador de Backup</h1>
+        <button onClick={onLogout} className="text-sm text-gray-500 hover:text-gray-700">
+          Sair
+        </button>
+      </div>
+
+      {/* Alerta de backup completo */}
+      <div className="rounded-xl border border-amber-300 bg-amber-50 p-5 mb-4 flex flex-wrap items-center gap-4">
+        <div className="flex-1 min-w-64">
+          <p className="font-semibold text-amber-700 mb-1">⚠️ Atenção!</p>
+          <p className="text-sm text-amber-800">
+            Realize o backup completo de todos os atendimentos.
+            <br />
+            Este backup irá buscar todos os registros de atendimentos da instância, é um backup mais
+            demorado. Os atendimentos já salvos são pulados automaticamente.
+          </p>
+        </div>
+        <button
+          onClick={runFull}
+          disabled={running}
+          className="rounded-lg bg-amber-500 text-white px-5 py-2.5 text-sm font-semibold hover:bg-amber-600 disabled:opacity-50"
+        >
+          ⬇ Backup Completo
+        </button>
+      </div>
+
+      {/* Alerta de limpeza agendada */}
+      {cleaning?.scheduled && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-5 mb-4">
+          <p className="font-semibold text-amber-700 mb-1">⚠️ Limpeza de Armazenamento Agendada</p>
+          <p className="text-sm text-amber-800">
+            Há uma limpeza agendada para {fmtDate(cleaning.date)}: os chats do ID {cleaning.firstId} até{' '}
+            {cleaning.lastId} serão excluídos da instância. O backup desses chats é feito automaticamente
+            antes da limpeza.
+          </p>
+        </div>
+      )}
+
+      {/* Progresso do job */}
+      {job && (running || job.status === 'error') && (
+        <div className="rounded-xl border border-gray-200 bg-white p-5 mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm font-semibold text-gray-700">
+              {JOB_LABELS[job.type] ?? job.type}
+              {running ? ' em andamento…' : ' — falhou'}
+            </p>
+            <p className="text-sm text-gray-500">
+              {job.done}/{job.total}
+              {job.errors > 0 && <span className="text-red-600"> · {job.errors} erro(s)</span>}
+            </p>
+          </div>
+          {running ? (
+            <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+              <div
+                className="h-full bg-blue-600 transition-all"
+                style={{ width: `${job.total ? Math.round(((job.done + job.errors) / job.total) * 100) : 0}%` }}
+              />
+            </div>
+          ) : (
+            <p className="text-sm text-red-600">{job.detail}</p>
+          )}
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm p-4 mb-4">{error}</div>
+      )}
+
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        {/* Filtros */}
+        <div className="flex flex-wrap items-end gap-3 mb-4">
+          <div className="flex-1 min-w-56">
+            <label className="block text-xs font-medium text-gray-500 mb-1">Buscar Chat</label>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  setPage(1);
+                  setAppliedSearch(search.trim());
+                }
+              }}
+              placeholder="Buscar por ID, nome ou número…"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Data Inicial</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => {
+                setPage(1);
+                setStartDate(e.target.value);
+              }}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Data Final</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => {
+                setPage(1);
+                setEndDate(e.target.value);
+              }}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+          </div>
+          <button
+            onClick={() => {
+              setPage(1);
+              setAppliedSearch(search.trim());
+            }}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Buscar
+          </button>
+          <button
+            onClick={() => setView({ name: 'settings' })}
+            className="rounded-lg bg-blue-600 text-white px-4 py-2 text-sm font-semibold hover:bg-blue-700"
+          >
+            Configurações
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <p className="text-sm text-blue-700">{data?.total ?? 0} chat(s) carregado(s)</p>
+          <div className="flex gap-2">
+            <button
+              onClick={runRange}
+              disabled={running}
+              className="rounded-lg bg-blue-600 text-white px-4 py-2 text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
+            >
+              🗓 Backup por Período
+            </button>
+            <button
+              onClick={() => void restoreSelected()}
+              disabled={selected.size === 0 || restoring || running}
+              className="rounded-lg bg-blue-600 text-white px-4 py-2 text-sm font-semibold hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed"
+            >
+              ⬆ {restoring ? 'Restaurando…' : `Restaurar Selecionados${selected.size > 0 ? ` (${selected.size})` : ''}`}
+            </button>
+          </div>
+        </div>
+
+        {/* Resultado da restauração */}
+        {restoreResults && (
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-semibold text-gray-700">
+                Restauração: {restoreResults.filter((r) => r.ok).length} de {restoreResults.length}{' '}
+                concluída(s)
+              </p>
+              <button
+                onClick={() => setRestoreResults(null)}
+                className="text-xs text-gray-400 hover:text-gray-600"
+              >
+                Fechar ✕
+              </button>
+            </div>
+            <ul className="space-y-1 max-h-48 overflow-y-auto">
+              {restoreResults.map((r) => (
+                <li key={r.id} className={`text-sm ${r.ok ? 'text-green-700' : 'text-red-600'}`}>
+                  {r.ok ? '✓' : '✗'} Atendimento {r.id}: {r.message}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Cards de resumo */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+          {[
+            ['TOTAL DE BACKUPS', String(data?.totalCatalogued ?? 0)],
+            ['RESULTADOS ENCONTRADOS', String(data?.total ?? 0)],
+            ['PÁGINA ATUAL', `${data?.page ?? 1}/${totalPages}`],
+            ['ÚLTIMO BACKUP', data?.lastBackupAt ? fmtDate(data.lastBackupAt) : '—'],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+              <p className="text-xs font-semibold text-blue-900 tracking-wide mb-1">{label}</p>
+              <p className="text-xl font-bold text-gray-900">{value}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Tabela */}
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 text-left text-xs text-gray-500 uppercase">
+                <th className="px-3 py-2.5 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allOnPageSelected}
+                    onChange={() =>
+                      setSelected((prev) => {
+                        const next = new Set(prev);
+                        if (allOnPageSelected) items.forEach((c) => next.delete(c.id));
+                        else items.forEach((c) => next.add(c.id));
+                        return next;
+                      })
+                    }
+                  />
+                </th>
+                <th className="px-3 py-2.5">ID</th>
+                <th className="px-3 py-2.5">Cliente</th>
+                <th className="px-3 py-2.5">Número</th>
+                <th className="px-3 py-2.5">Início</th>
+                <th className="px-3 py-2.5">Fim</th>
+                <th className="px-3 py-2.5">Ação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-3 py-8 text-center text-gray-400">
+                    Nenhum backup catalogado ainda.
+                  </td>
+                </tr>
+              )}
+              {items.map((c) => (
+                <tr key={c.id} className="border-t border-gray-100 hover:bg-gray-50">
+                  <td className="px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(c.id)}
+                      onChange={() => toggleSelected(c.id)}
+                      disabled={c.status !== 'ok'}
+                    />
+                  </td>
+                  <td className="px-3 py-2 font-medium text-gray-900">{c.id}</td>
+                  <td className="px-3 py-2">{c.client_name ?? ''}</td>
+                  <td className="px-3 py-2">{c.client_number ?? ''}</td>
+                  <td className="px-3 py-2">{fmtDate(c.begin_time)}</td>
+                  <td className="px-3 py-2">{fmtDate(c.end_time)}</td>
+                  <td className="px-3 py-2">
+                    {c.status === 'ok' ? (
+                      <button
+                        onClick={() => setView({ name: 'chat', id: c.id })}
+                        className="rounded border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                      >
+                        Ver
+                      </button>
+                    ) : (
+                      <span
+                        title={c.error_message ?? undefined}
+                        className="rounded bg-red-100 text-red-700 px-2 py-1 text-xs font-medium"
+                      >
+                        Erro
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Paginação */}
+        <div className="flex items-center justify-between mt-4">
+          <p className="text-xs text-gray-500">
+            Último backup: {data?.lastBackupAt ? fmtDateTime(data.lastBackupAt) : '—'}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="rounded border border-gray-300 px-3 py-1.5 text-xs font-medium disabled:opacity-40"
+            >
+              ← Anterior
+            </button>
+            <span className="text-xs text-gray-600">
+              Página {page} de {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="rounded border border-gray-300 px-3 py-1.5 text-xs font-medium disabled:opacity-40"
+            >
+              Próxima →
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
