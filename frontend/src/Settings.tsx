@@ -29,6 +29,19 @@ export default function Settings({ onBack }: { onBack: () => void }) {
   const [testS3, setTestS3] = useState<Feedback | null>(null);
   const [scheduleMsg, setScheduleMsg] = useState<Feedback | null>(null);
   const [busy, setBusy] = useState(false);
+  const [checkingCleaning, setCheckingCleaning] = useState(false);
+
+  async function checkCleaningNow() {
+    setCheckingCleaning(true);
+    try {
+      const r = await api<{ cleaning: Cleaning | null }>('/api/cleaning/check', { method: 'POST' });
+      setCleaning(r.cleaning);
+    } catch {
+      // erro já registrado no servidor; mantém o estado atual
+    } finally {
+      setCheckingCleaning(false);
+    }
+  }
 
   useEffect(() => {
     api<SettingsData>('/api/settings').then((s) => {
@@ -290,16 +303,55 @@ export default function Settings({ onBack }: { onBack: () => void }) {
           Salvar
         </button>
 
-        {cleaning?.scheduled && (
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 mt-4">
-            <p className="text-sm font-semibold text-gray-700">⏳ Limpeza de Armazenamento Agendada</p>
-            <p className="text-sm text-gray-600">
-              Há uma limpeza agendada para {fmtDate(cleaning.date)} envolvendo os chats do ID{' '}
-              {cleaning.firstId} até {cleaning.lastId}. O backup desses chats será feito automaticamente
-              antes da limpeza.
-            </p>
+        <div
+          className={`rounded-lg border p-4 mt-4 ${
+            cleaning?.scheduled ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-gray-50'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p
+                className={`text-sm font-semibold ${
+                  cleaning?.scheduled ? 'text-amber-700' : 'text-gray-700'
+                }`}
+              >
+                {cleaning?.scheduled ? '⚠️ Limpeza de Armazenamento Agendada' : 'Limpeza de Armazenamento'}
+              </p>
+              {cleaning?.scheduled ? (
+                <p className="text-sm text-amber-800 mt-1">
+                  Há uma limpeza agendada para <strong>{fmtDate(cleaning.date)}</strong>: os chats do ID{' '}
+                  <strong>{cleaning.firstId}</strong> até <strong>{cleaning.lastId}</strong> serão
+                  excluídos da instância
+                  {cleaning.cutDate ? (
+                    <>
+                      {' '}
+                      (atendimentos anteriores a <strong>{fmtDate(cleaning.cutDate)}</strong>)
+                    </>
+                  ) : null}
+                  . O backup desses chats é feito automaticamente antes da limpeza.
+                </p>
+              ) : (
+                <p className="text-sm text-gray-600 mt-1">
+                  {cleaning
+                    ? 'Nenhuma limpeza agendada na instância no momento.'
+                    : 'Ainda não verificado (configure o AlôChat e clique em Verificar agora).'}
+                </p>
+              )}
+              {cleaning?.checkedAt && (
+                <p className="text-xs text-gray-400 mt-1">
+                  Última verificação: {fmtDate(cleaning.checkedAt)} (verificada automaticamente 1x/dia)
+                </p>
+              )}
+            </div>
+            <button
+              onClick={() => void checkCleaningNow()}
+              disabled={checkingCleaning}
+              className="shrink-0 rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+            >
+              {checkingCleaning ? 'Verificando…' : 'Verificar agora'}
+            </button>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

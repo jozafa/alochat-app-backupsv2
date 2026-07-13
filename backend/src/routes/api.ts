@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import * as alochat from '../alochat.js';
 import * as dbq from '../db.js';
 import { startFullBackup, startRangeBackup } from '../backup.js';
-import { reloadDailySchedule } from '../scheduler.js';
+import { reloadDailySchedule, runCleaningCheck } from '../scheduler.js';
 import { testS3 } from '../s3.js';
 import { parseTime } from '../util.js';
 import { isAuthenticated } from './auth.js';
@@ -145,6 +145,13 @@ export async function apiRoutes(app: FastifyInstance) {
       }
     }
     return { results, aborted };
+  });
+
+  // Consulta a limpeza agendada agora (também dispara o backup preventivo se houver).
+  app.post('/api/cleaning/check', async () => {
+    await runCleaningCheck();
+    const raw = dbq.getConfig('next_cleaning');
+    return { cleaning: raw ? JSON.parse(raw) : null };
   });
 
   app.get('/api/settings', async () => {

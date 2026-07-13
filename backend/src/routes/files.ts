@@ -80,6 +80,20 @@ export async function filesRoutes(app: FastifyInstance) {
     return backup;
   });
 
+  // Baixa o artefato de backup exatamente como está no B2 (chat-{id}.json.gz).
+  app.get('/api/chats/:id/download', async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    if (!Number.isInteger(id)) return reply.code(400).send({ message: 'ID inválido' });
+    const row = getChat(id);
+    if (!row || row.status !== 'ok' || !row.s3_key) {
+      return reply.code(404).send({ message: 'Backup não encontrado no catálogo' });
+    }
+    const gz = await getObjectBuffer(row.s3_key);
+    reply.header('content-type', 'application/gzip');
+    reply.header('content-disposition', `attachment; filename="chat-${id}.json.gz"`);
+    return reply.send(gz);
+  });
+
   app.get('/api/chats/:id/files/:fileId', async (req, reply) => {
     const { id: rawId, fileId: rawFileId } = req.params as { id: string; fileId: string };
     const id = Number(rawId);

@@ -27,8 +27,11 @@ export default function Dashboard({
   const [page, setPage] = useState(1);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [restoring, setRestoring] = useState(false);
-  const [restoreResults, setRestoreResults] = useState<RestoreResult[] | null>(null);
+  const [modal, setModal] = useState<{
+    ids: number[];
+    phase: 'confirm' | 'running' | 'done';
+    results: RestoreResult[];
+  } | null>(null);
   const prevJobStatus = useRef<string | null>(null);
 
   const loadBackups = useCallback(async () => {
@@ -107,32 +110,29 @@ export default function Dashboard({
     void startJob('/api/backups/range', { startDate, endDate });
   }
 
-  async function restoreSelected() {
-    const ids = [...selected].sort((a, b) => a - b);
+  function openRestore(ids: number[]) {
     if (ids.length === 0) return;
-    if (
-      !window.confirm(
-        `Restaurar ${ids.length} atendimento(s) na instância AlôChat?\n\n` +
-          'Atenção: cada atendimento restaurado recebe um NOVO ID sequencial (o ID original é sempre ignorado) ' +
-          'e passa a ser tratado como o mais recente pela limpeza automática da instância.'
-      )
-    ) {
-      return;
-    }
-    setRestoring(true);
-    setRestoreResults(null);
+    setModal({ ids: [...ids].sort((a, b) => a - b), phase: 'confirm', results: [] });
+  }
+
+  async function confirmRestore() {
+    if (!modal) return;
+    setModal({ ...modal, phase: 'running' });
     try {
       const r = await api<{ results: RestoreResult[]; aborted: boolean }>('/api/restore', {
         method: 'POST',
-        body: JSON.stringify({ ids }),
+        body: JSON.stringify({ ids: modal.ids }),
       });
-      setRestoreResults(r.results);
+      setModal({ ids: modal.ids, phase: 'done', results: r.results });
       setSelected(new Set());
-      setError('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao restaurar');
-    } finally {
-      setRestoring(false);
+      setModal({
+        ids: modal.ids,
+        phase: 'done',
+        results: [
+          { id: 0, ok: false, message: err instanceof Error ? err.message : 'Erro ao restaurar' },
+        ],
+      });
     }
   }
 
@@ -291,39 +291,14 @@ export default function Dashboard({
               🗓 Backup por Período
             </button>
             <button
-              onClick={() => void restoreSelected()}
-              disabled={selected.size === 0 || restoring || running}
+              onClick={() => openRestore([...selected])}
+              disabled={selected.size === 0 || running}
               className="rounded-lg bg-blue-600 text-white px-4 py-2 text-sm font-semibold hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed"
             >
-              ⬆ {restoring ? 'Restaurando…' : `Restaurar Selecionados${selected.size > 0 ? ` (${selected.size})` : ''}`}
+              ⬆ Restaurar Selecionados{selected.size > 0 ? ` (${selected.size})` : ''}
             </button>
           </div>
         </div>
-
-        {/* Resultado da restauração */}
-        {restoreResults && (
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-sm font-semibold text-gray-700">
-                Restauração: {restoreResults.filter((r) => r.ok).length} de {restoreResults.length}{' '}
-                concluída(s)
-              </p>
-              <button
-                onClick={() => setRestoreResults(null)}
-                className="text-xs text-gray-400 hover:text-gray-600"
-              >
-                Fechar ✕
-              </button>
-            </div>
-            <ul className="space-y-1 max-h-48 overflow-y-auto">
-              {restoreResults.map((r) => (
-                <li key={r.id} className={`text-sm ${r.ok ? 'text-green-700' : 'text-red-600'}`}>
-                  {r.ok ? '✓' : '✗'} Atendimento {r.id}: {r.message}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
 
         {/* Cards de resumo */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
@@ -390,14 +365,30 @@ export default function Dashboard({
                   <td className="px-3 py-2">{c.client_number ?? ''}</td>
                   <td className="px-3 py-2">{fmtDate(c.begin_time)}</td>
                   <td className="px-3 py-2">{fmtDate(c.end_time)}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2 whitespace-nowrap">
                     {c.status === 'ok' ? (
-                      <button
-                        onClick={() => setView({ name: 'chat', id: c.id })}
-                        className="rounded border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
-                      >
-                        Ver
-                      </button>
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => setView({ name: 'chat', id: c.id })}
+                          className="rounded border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                        >
+                          Ver
+                        </button>
+                        <a
+                          href={`/api/chats/${c.id}/download`}
+                          title="Baixar o arquivo de backup (chat-{id}.json.gz)"
+                          className="rounded border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                        >
+                          Baixar
+                        </a>
+                        <button
+                          onClick={() => openRestore([c.id])}
+                          disabled={running}
+                          className="rounded border border-blue-300 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-40"
+                        >
+                          Restaurar
+                        </button>
+                      </div>
                     ) : (
                       <span
                         title={c.error_message ?? undefined}
@@ -439,6 +430,82 @@ export default function Dashboard({
           </div>
         </div>
       </div>
+
+      {/* Modal de restauração */}
+      {modal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+            {modal.phase === 'confirm' && (
+              <>
+                <h2 className="text-lg font-bold text-gray-900 mb-3">
+                  Restaurar {modal.ids.length} atendimento(s)
+                </h2>
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 mb-4">
+                  <p className="font-semibold mb-1">⚠️ Atenção</p>
+                  <p>
+                    Cada atendimento restaurado recebe um <strong>novo ID sequencial</strong> na
+                    instância — o ID original é sempre ignorado — e passa a ser tratado como o mais
+                    recente pela limpeza automática. A instância também precisa ter espaço disponível.
+                  </p>
+                </div>
+                <p className="text-sm text-gray-600 mb-5 break-words">
+                  IDs: {modal.ids.slice(0, 15).join(', ')}
+                  {modal.ids.length > 15 ? ` e mais ${modal.ids.length - 15}…` : ''}
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setModal(null)}
+                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => void confirmRestore()}
+                    className="rounded-lg bg-blue-600 text-white px-4 py-2 text-sm font-semibold hover:bg-blue-700"
+                  >
+                    Restaurar agora
+                  </button>
+                </div>
+              </>
+            )}
+
+            {modal.phase === 'running' && (
+              <div className="py-8 text-center">
+                <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+                <p className="text-sm font-medium text-gray-700">
+                  Restaurando {modal.ids.length} atendimento(s)…
+                </p>
+                <p className="text-xs text-gray-400 mt-1">Não feche esta janela.</p>
+              </div>
+            )}
+
+            {modal.phase === 'done' && (
+              <>
+                <h2 className="text-lg font-bold text-gray-900 mb-3">
+                  Restauração concluída: {modal.results.filter((r) => r.ok).length} de{' '}
+                  {modal.results.length}
+                </h2>
+                <ul className="space-y-1.5 max-h-64 overflow-y-auto mb-5">
+                  {modal.results.map((r, i) => (
+                    <li key={i} className={`text-sm ${r.ok ? 'text-green-700' : 'text-red-600'}`}>
+                      {r.ok ? '✓' : '✗'} {r.id ? `Atendimento ${r.id}: ` : ''}
+                      {r.message}
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setModal(null)}
+                    className="rounded-lg bg-blue-600 text-white px-4 py-2 text-sm font-semibold hover:bg-blue-700"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
