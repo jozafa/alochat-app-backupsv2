@@ -66,6 +66,8 @@ export async function apiRoutes(app: FastifyInstance) {
     return { job: dbq.getRunningJob() ?? dbq.getLastJob() ?? null };
   });
 
+  app.get('/api/stats', async () => dbq.getStats());
+
   app.get('/api/schedule', async () => {
     return { days: dbq.getSchedule() };
   });

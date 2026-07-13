@@ -246,6 +246,33 @@ export function getLastJob(): JobRow | undefined {
   return db.prepare(`SELECT * FROM jobs ORDER BY id DESC LIMIT 1`).get() as JobRow | undefined;
 }
 
+// ---- estatísticas do dashboard gerencial ----
+
+export function getStats() {
+  const ok = db
+    .prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS size FROM chats WHERE status = 'ok'`)
+    .get() as { n: number; size: number };
+  const errors = (
+    db.prepare(`SELECT COUNT(*) AS n FROM chats WHERE status = 'error'`).get() as { n: number }
+  ).n;
+  const byMonth = db
+    .prepare(
+      `SELECT substr(begin_time, 1, 7) AS month, COUNT(*) AS count, COALESCE(SUM(size_bytes), 0) AS sizeBytes
+       FROM chats WHERE status = 'ok' AND begin_time IS NOT NULL
+       GROUP BY month ORDER BY month DESC LIMIT 12`
+    )
+    .all() as { month: string; count: number; sizeBytes: number }[];
+  const jobs = db.prepare(`SELECT * FROM jobs ORDER BY id DESC LIMIT 8`).all() as JobRow[];
+  return {
+    totalOk: ok.n,
+    totalErrors: errors,
+    totalSizeBytes: ok.size,
+    lastBackupAt: lastBackupAt(),
+    byMonth,
+    jobs,
+  };
+}
+
 /** Jobs que ficaram 'running' após um reinício do container viram 'error' (o backup é retomável re-executando). */
 export function markStaleJobs(): void {
   db.prepare(

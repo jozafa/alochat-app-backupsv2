@@ -61,6 +61,15 @@ export interface Cleaning {
   checkedAt?: string;
 }
 
+export interface Stats {
+  totalOk: number;
+  totalErrors: number;
+  totalSizeBytes: number;
+  lastBackupAt: string | null;
+  byMonth: { month: string; count: number; sizeBytes: number }[];
+  jobs: Job[];
+}
+
 export interface RestoreResult {
   id: number;
   ok: boolean;

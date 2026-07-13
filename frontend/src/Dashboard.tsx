@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, type BackupsResponse, type Cleaning, type Job, type RestoreResult } from './api';
-import { fmtDate, fmtDateTime } from './format';
+import { api, type BackupsResponse, type Cleaning, type Job, type RestoreResult, type Stats } from './api';
+import { fmtBytes, fmtDate, fmtDateTime, fmtDuration, fmtMonth } from './format';
 import type { View } from './App';
 
 const JOB_LABELS: Record<string, string> = {
@@ -8,6 +8,12 @@ const JOB_LABELS: Record<string, string> = {
   range: 'Backup por período',
   daily: 'Rotina diária',
   cleaning: 'Backup preventivo de limpeza',
+};
+
+const JOB_STATUS: Record<string, { label: string; cls: string }> = {
+  running: { label: 'Executando', cls: 'bg-blue-100 text-blue-700' },
+  done: { label: 'Concluído', cls: 'bg-green-100 text-green-700' },
+  error: { label: 'Erro', cls: 'bg-red-100 text-red-700' },
 };
 
 export default function Dashboard({
@@ -18,6 +24,7 @@ export default function Dashboard({
   onLogout: () => void;
 }) {
   const [data, setData] = useState<BackupsResponse | null>(null);
+  const [stats, setStats] = useState<Stats | null>(null);
   const [cleaning, setCleaning] = useState<Cleaning | null>(null);
   const [job, setJob] = useState<Job | null>(null);
   const [search, setSearch] = useState('');
@@ -51,11 +58,18 @@ export default function Dashboard({
     void loadBackups();
   }, [loadBackups]);
 
+  const loadStats = useCallback(() => {
+    api<Stats>('/api/stats')
+      .then(setStats)
+      .catch(() => undefined);
+  }, []);
+
   useEffect(() => {
+    loadStats();
     api<{ cleaning: Cleaning | null }>('/api/cleaning')
       .then((r) => setCleaning(r.cleaning))
       .catch(() => undefined);
-  }, []);
+  }, [loadStats]);
 
   // Polling do job: a cada 2,5s enquanto houver job rodando; recarrega a lista ao terminar.
   useEffect(() => {
@@ -66,7 +80,10 @@ export default function Dashboard({
         const { job: j } = await api<{ job: Job | null }>('/api/jobs/current');
         if (cancelled) return;
         setJob(j);
-        if (prevJobStatus.current === 'running' && j?.status !== 'running') void loadBackups();
+        if (prevJobStatus.current === 'running' && j?.status !== 'running') {
+          void loadBackups();
+          loadStats();
+        }
         prevJobStatus.current = j?.status ?? null;
         timer = setTimeout(poll, j?.status === 'running' ? 2500 : 10000);
       } catch {
@@ -78,7 +95,7 @@ export default function Dashboard({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [loadBackups]);
+  }, [loadBackups, loadStats]);
 
   async function startJob(path: string, body?: unknown) {
     try {
@@ -221,6 +238,94 @@ export default function Dashboard({
         <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm p-4 mb-4">{error}</div>
       )}
 
+      {/* Visão gerencial */}
+      {stats && (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+            {[
+              ['TOTAL DE BACKUPS', stats.totalOk.toLocaleString('pt-BR')],
+              ['TAMANHO TOTAL', fmtBytes(stats.totalSizeBytes)],
+              ['COM ERRO', stats.totalErrors.toLocaleString('pt-BR')],
+              ['ÚLTIMO BACKUP', stats.lastBackupAt ? fmtDateTime(stats.lastBackupAt) : '—'],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-xl border border-gray-200 bg-white p-4">
+                <p className="text-xs font-semibold text-blue-900 tracking-wide mb-1">{label}</p>
+                <p className="text-xl font-bold text-gray-900">{value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid lg:grid-cols-2 gap-4 mb-4">
+            <div className="rounded-xl border border-gray-200 bg-white p-5">
+              <p className="text-sm font-semibold text-gray-800 mb-3">Últimos jobs</p>
+              {stats.jobs.length === 0 ? (
+                <p className="text-sm text-gray-400">Nenhum job executado ainda.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-gray-500 uppercase">
+                      <th className="py-1.5 pr-2">Tipo</th>
+                      <th className="py-1.5 pr-2">Status</th>
+                      <th className="py-1.5 pr-2">Feitos</th>
+                      <th className="py-1.5 pr-2">Início</th>
+                      <th className="py-1.5">Duração</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stats.jobs.map((j) => (
+                      <tr key={j.id} className="border-t border-gray-100" title={j.detail ?? undefined}>
+                        <td className="py-1.5 pr-2">{JOB_LABELS[j.type] ?? j.type}</td>
+                        <td className="py-1.5 pr-2">
+                          <span
+                            className={`rounded px-2 py-0.5 text-xs font-medium ${
+                              JOB_STATUS[j.status]?.cls ?? 'bg-gray-100 text-gray-600'
+                            }`}
+                          >
+                            {JOB_STATUS[j.status]?.label ?? j.status}
+                          </span>
+                        </td>
+                        <td className="py-1.5 pr-2">
+                          {j.done}/{j.total}
+                          {j.errors > 0 && <span className="text-red-600"> · {j.errors} erro(s)</span>}
+                        </td>
+                        <td className="py-1.5 pr-2">{fmtDateTime(j.started_at)}</td>
+                        <td className="py-1.5">{fmtDuration(j.started_at, j.finished_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-gray-200 bg-white p-5">
+              <p className="text-sm font-semibold text-gray-800 mb-3">Backups por mês (início do atendimento)</p>
+              {stats.byMonth.length === 0 ? (
+                <p className="text-sm text-gray-400">Nenhum backup catalogado ainda.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-gray-500 uppercase">
+                      <th className="py-1.5 pr-2">Mês</th>
+                      <th className="py-1.5 pr-2">Atendimentos</th>
+                      <th className="py-1.5">Tamanho</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stats.byMonth.map((m) => (
+                      <tr key={m.month} className="border-t border-gray-100">
+                        <td className="py-1.5 pr-2 font-medium">{fmtMonth(m.month)}</td>
+                        <td className="py-1.5 pr-2">{m.count.toLocaleString('pt-BR')}</td>
+                        <td className="py-1.5">{fmtBytes(m.sizeBytes)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
       <div className="rounded-xl border border-gray-200 bg-white p-5">
         {/* Filtros */}
         <div className="flex flex-wrap items-end gap-3 mb-4">
@@ -300,13 +405,11 @@ export default function Dashboard({
           </div>
         </div>
 
-        {/* Cards de resumo */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        {/* Cards de resumo da listagem */}
+        <div className="grid grid-cols-2 gap-3 mb-4">
           {[
-            ['TOTAL DE BACKUPS', String(data?.totalCatalogued ?? 0)],
-            ['RESULTADOS ENCONTRADOS', String(data?.total ?? 0)],
+            ['RESULTADOS ENCONTRADOS', (data?.total ?? 0).toLocaleString('pt-BR')],
             ['PÁGINA ATUAL', `${data?.page ?? 1}/${totalPages}`],
-            ['ÚLTIMO BACKUP', data?.lastBackupAt ? fmtDate(data.lastBackupAt) : '—'],
           ].map(([label, value]) => (
             <div key={label} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
               <p className="text-xs font-semibold text-blue-900 tracking-wide mb-1">{label}</p>
