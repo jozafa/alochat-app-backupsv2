@@ -64,6 +64,21 @@ function Attachment({ chatId, file }: { chatId: number; file: BackupFile }) {
 
 function Bubble({ chatId, msg }: { chatId: number; msg: Message }) {
   if (msg.direction === 'info' || msg.direction === 'system' || msg.direction === 'alert') {
+    // A instância usa direções info/system/alert também para mensagens com anexo
+    // (ex.: áudios chegam como alert com texto vazio) — nesses casos mostra o anexo.
+    if (msg.file) {
+      return (
+        <div className="flex justify-center my-2">
+          <div className="rounded-2xl bg-white px-4 py-2 max-w-[75%] shadow-sm">
+            {msg.text && (
+              <p className="text-sm text-gray-900 whitespace-pre-wrap break-words">{msg.text}</p>
+            )}
+            <Attachment chatId={chatId} file={msg.file} />
+            <p className="text-[10px] text-gray-400 text-right mt-1">{fmtDateTime(msg.timestamp)}</p>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="flex justify-center my-2">
         <div

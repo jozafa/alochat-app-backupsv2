@@ -108,7 +108,9 @@ export async function filesRoutes(app: FastifyInstance) {
       if (!f.data) {
         return reply.code(404).send({ message: 'Anexo não incluído no backup (chat excedeu 50 MB)' });
       }
-      const m = /^data:([^;,]+);base64,(.+)$/s.exec(f.data);
+      // O mimeType pode ter parâmetros (ex.: "audio/ogg; codecs=opus"), então o media type
+      // do data URL vai até o ";base64," final — não até o primeiro ";".
+      const m = /^data:(.*?);base64,(.+)$/s.exec(f.data);
       if (!m) return reply.code(500).send({ message: 'Anexo em formato inesperado' });
       reply.header('content-type', f.mimeType ?? m[1]);
       reply.header('cache-control', 'private, max-age=3600');
