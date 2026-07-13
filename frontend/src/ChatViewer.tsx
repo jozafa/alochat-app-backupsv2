@@ -63,22 +63,10 @@ function Attachment({ chatId, file }: { chatId: number; file: BackupFile }) {
 }
 
 function Bubble({ chatId, msg }: { chatId: number; msg: Message }) {
-  if (msg.direction === 'info' || msg.direction === 'system' || msg.direction === 'alert') {
-    // A instância usa direções info/system/alert também para mensagens com anexo
-    // (ex.: áudios chegam como alert com texto vazio) — nesses casos mostra o anexo.
-    if (msg.file) {
-      return (
-        <div className="flex justify-center my-2">
-          <div className="rounded-2xl bg-white px-4 py-2 max-w-[75%] shadow-sm">
-            {msg.text && (
-              <p className="text-sm text-gray-900 whitespace-pre-wrap break-words">{msg.text}</p>
-            )}
-            <Attachment chatId={chatId} file={msg.file} />
-            <p className="text-[10px] text-gray-400 text-right mt-1">{fmtDateTime(msg.timestamp)}</p>
-          </div>
-        </div>
-      );
-    }
+  const isNote = msg.direction === 'info' || msg.direction === 'system' || msg.direction === 'alert';
+
+  // Notas sem anexo viram pill centralizada (âmbar para alertas).
+  if (isNote && !msg.file) {
     return (
       <div className="flex justify-center my-2">
         <div
@@ -92,12 +80,24 @@ function Bubble({ chatId, msg }: { chatId: number; msg: Message }) {
       </div>
     );
   }
-  const out = msg.direction === 'out';
+
+  // Lado do balão: in = cliente (esquerda); out = atendente (direita).
+  // alert com anexo também é envio do lado do atendente ("Envio do arquivo", alerta de supervisor).
+  const side =
+    msg.direction === 'in'
+      ? 'left'
+      : msg.direction === 'out' || msg.direction === 'alert'
+        ? 'right'
+        : 'center';
   return (
-    <div className={`flex my-1.5 ${out ? 'justify-end' : 'justify-start'}`}>
+    <div
+      className={`flex my-1.5 ${
+        side === 'right' ? 'justify-end' : side === 'left' ? 'justify-start' : 'justify-center'
+      }`}
+    >
       <div
         className={`rounded-2xl px-4 py-2 max-w-[75%] shadow-sm ${
-          out ? 'bg-emerald-100 rounded-br-sm' : 'bg-white rounded-bl-sm'
+          side === 'right' ? 'bg-emerald-100 rounded-br-sm' : 'bg-white rounded-bl-sm'
         }`}
       >
         {msg.text && <p className="text-sm text-gray-900 whitespace-pre-wrap break-words">{msg.text}</p>}
