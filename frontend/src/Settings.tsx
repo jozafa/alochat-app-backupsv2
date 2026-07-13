@@ -151,25 +151,10 @@ export default function Settings({ onBack }: { onBack: () => void }) {
           </div>
           <hr className="border-gray-100" />
           <p className="text-sm font-semibold text-gray-700">Armazenamento (Backblaze B2)</p>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Endpoint S3:</label>
-            <input
-              value={form.s3_endpoint}
-              onChange={set('s3_endpoint')}
-              placeholder="https://s3.us-west-004.backblazeb2.com"
-              className={inputCls}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Região:</label>
-              <input value={form.s3_region} onChange={set('s3_region')} className={inputCls} />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Bucket:</label>
-              <input value={form.s3_bucket} onChange={set('s3_bucket')} className={inputCls} />
-            </div>
-          </div>
+          <p className="text-xs text-gray-500 -mt-2">
+            Informe apenas Key ID e Application Key — endpoint, região e bucket são detectados
+            automaticamente (bucket somente quando a application key é restrita a um bucket).
+          </p>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Key ID:</label>
             <input value={form.s3_access_key_id} onChange={set('s3_access_key_id')} className={inputCls} />
@@ -183,6 +168,35 @@ export default function Settings({ onBack }: { onBack: () => void }) {
               placeholder={secretsSet.s3 ? '•••••••••••••••••••• (configurada)' : ''}
               className={inputCls}
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Endpoint S3:</label>
+            <input
+              value={form.s3_endpoint}
+              onChange={set('s3_endpoint')}
+              placeholder="detectado automaticamente"
+              className={inputCls}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Região:</label>
+              <input
+                value={form.s3_region}
+                onChange={set('s3_region')}
+                placeholder="detectada automaticamente"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Bucket:</label>
+              <input
+                value={form.s3_bucket}
+                onChange={set('s3_bucket')}
+                placeholder="detectado (key restrita)"
+                className={inputCls}
+              />
+            </div>
           </div>
         </div>
 

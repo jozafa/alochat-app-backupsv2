@@ -179,8 +179,8 @@ export async function apiRoutes(app: FastifyInstance) {
 
   app.post('/api/settings/test-s3', async () => {
     try {
-      await testS3();
-      return { ok: true, message: 'Bucket acessível' };
+      const { endpoint, bucket } = await testS3();
+      return { ok: true, message: `Bucket "${bucket}" acessível em ${endpoint}` };
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : String(err) };
     }

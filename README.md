@@ -27,10 +27,10 @@ A aplicação sobe em `http://<host>:8080`.
 |---|---|
 | `ALOCHAT_BASE_URL` | URL da instância, ex. `https://cliente.alochat.com.br` |
 | `ALOCHAT_API_KEY` | Chave global da API (Configurações → Geral na instância) |
-| `S3_ENDPOINT` | Endpoint B2, ex. `https://s3.us-west-004.backblazeb2.com` |
-| `S3_REGION` | Região do bucket, ex. `us-west-004` |
-| `S3_BUCKET` | Nome do bucket |
 | `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | Credenciais da application key B2 |
+| `S3_ENDPOINT` | Opcional — detectado automaticamente via `b2_authorize_account` |
+| `S3_REGION` | Opcional — detectada automaticamente |
+| `S3_BUCKET` | Opcional se a application key for restrita a um bucket (detectado); obrigatório caso contrário |
 | `APP_PASSWORD` | Senha única de acesso à UI (vazia = sem senha) |
 
 As credenciais também podem ser preenchidas/alteradas depois pela tela **Configurações** da UI
