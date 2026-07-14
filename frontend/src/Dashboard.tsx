@@ -169,8 +169,12 @@ export default function Dashboard({
 
   return (
     <div className="max-w-6xl mx-auto p-6">
-      <div className="flex items-start justify-between">
-        <h1 className="text-2xl font-bold text-gray-900 mb-4">Gerenciador de Backup</h1>
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-3">
+          <img src="/alochat_logo.png" alt="AlôChat" className="h-8 w-auto" />
+          <span className="h-6 w-px bg-gray-300" />
+          <h1 className="text-lg font-semibold text-gray-700">Gerenciador de Backup</h1>
+        </div>
         <button onClick={onLogout} className="text-sm text-gray-500 hover:text-gray-700">
           Sair
         </button>

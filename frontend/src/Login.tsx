@@ -21,27 +21,46 @@ export default function Login({ onSuccess }: { onSuccess: () => void }) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-      <form onSubmit={submit} className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 w-full max-w-sm">
-        <h1 className="text-xl font-bold text-gray-900 mb-1">Gerenciador de Backup</h1>
-        <p className="text-sm text-gray-500 mb-6">Informe a senha de acesso.</p>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
-        <input
-          type="password"
-          autoFocus
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
-        <button
-          type="submit"
-          disabled={busy}
-          className="mt-4 w-full rounded-lg bg-blue-600 text-white py-2 text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
+    <div className="relative min-h-screen overflow-hidden bg-slate-950 flex items-center justify-center p-4">
+      {/* brilhos decorativos */}
+      <div className="pointer-events-none absolute -top-32 -left-32 h-96 w-96 rounded-full bg-blue-600/30 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-40 -right-24 h-[28rem] w-[28rem] rounded-full bg-indigo-500/20 blur-3xl" />
+      <div className="pointer-events-none absolute top-1/3 left-2/3 h-64 w-64 rounded-full bg-blue-400/10 blur-3xl" />
+
+      <div className="relative w-full max-w-sm">
+        <form
+          onSubmit={submit}
+          className="rounded-3xl bg-white/95 backdrop-blur shadow-2xl shadow-blue-950/40 ring-1 ring-white/10 p-9"
         >
-          {busy ? 'Entrando…' : 'Entrar'}
-        </button>
-      </form>
+          <img src="/alochat_logo.png" alt="AlôChat" className="h-11 mx-auto mb-3" />
+          <p className="text-center text-[11px] font-semibold uppercase tracking-[0.3em] text-blue-600 mb-8">
+            Gerenciador de Backup
+          </p>
+
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Senha de acesso</label>
+          <input
+            type="password"
+            autoFocus
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••••••"
+            className="w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition"
+          />
+          {error && <p className="text-sm text-red-600 mt-2.5">{error}</p>}
+
+          <button
+            type="submit"
+            disabled={busy}
+            className="mt-6 w-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-2.5 text-sm font-semibold shadow-lg shadow-blue-600/30 hover:from-blue-700 hover:to-indigo-700 active:scale-[0.99] transition disabled:opacity-50"
+          >
+            {busy ? 'Entrando…' : 'Entrar'}
+          </button>
+
+          <p className="text-center text-[11px] text-gray-400 mt-6">
+            Acesso restrito · backups protegidos em nuvem
+          </p>
+        </form>
+      </div>
     </div>
   );
 }
