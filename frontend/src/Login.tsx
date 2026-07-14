@@ -21,16 +21,16 @@ export default function Login({ onSuccess }: { onSuccess: () => void }) {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-slate-950 flex items-center justify-center p-4">
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-blue-50 via-white to-sky-100 flex items-center justify-center p-4">
       {/* brilhos decorativos */}
-      <div className="pointer-events-none absolute -top-32 -left-32 h-96 w-96 rounded-full bg-blue-600/30 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-40 -right-24 h-[28rem] w-[28rem] rounded-full bg-indigo-500/20 blur-3xl" />
-      <div className="pointer-events-none absolute top-1/3 left-2/3 h-64 w-64 rounded-full bg-blue-400/10 blur-3xl" />
+      <div className="pointer-events-none absolute -top-32 -left-32 h-96 w-96 rounded-full bg-blue-300/30 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-40 -right-24 h-[28rem] w-[28rem] rounded-full bg-sky-300/30 blur-3xl" />
+      <div className="pointer-events-none absolute top-1/4 left-2/3 h-64 w-64 rounded-full bg-blue-200/30 blur-3xl" />
 
       <div className="relative w-full max-w-sm">
         <form
           onSubmit={submit}
-          className="rounded-3xl bg-white/95 backdrop-blur shadow-2xl shadow-blue-950/40 ring-1 ring-white/10 p-9"
+          className="rounded-3xl bg-white shadow-2xl shadow-blue-200/60 ring-1 ring-gray-100 p-9"
         >
           <img src="/alochat_logo.png" alt="AlôChat" className="h-11 mx-auto mb-3" />
           <p className="text-center text-[11px] font-semibold uppercase tracking-[0.3em] text-blue-600 mb-8">
@@ -51,7 +51,7 @@ export default function Login({ onSuccess }: { onSuccess: () => void }) {
           <button
             type="submit"
             disabled={busy}
-            className="mt-6 w-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-2.5 text-sm font-semibold shadow-lg shadow-blue-600/30 hover:from-blue-700 hover:to-indigo-700 active:scale-[0.99] transition disabled:opacity-50"
+            className="mt-6 w-full rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 text-white py-2.5 text-sm font-semibold shadow-lg shadow-blue-600/30 hover:from-blue-700 hover:to-blue-800 active:scale-[0.99] transition disabled:opacity-50"
           >
             {busy ? 'Entrando…' : 'Entrar'}
           </button>

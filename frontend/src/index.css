@@ -1,1 +1,9 @@
 @import 'tailwindcss';
+
+/* Azul da marca AlôChat (#1863DC, extraído de alochat.com.br) substitui a escala azul padrão. */
+@theme {
+  --color-blue-500: #3f7ee6;
+  --color-blue-600: #1863dc;
+  --color-blue-700: #1254c2;
+  --color-blue-800: #0f47a4;
+}

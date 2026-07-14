@@ -19,13 +19,22 @@ export async function apiRoutes(app: FastifyInstance) {
   });
 
   app.get('/api/backups', async (req) => {
-    const q = req.query as { search?: string; startDate?: string; endDate?: string; page?: string };
+    const q = req.query as {
+      search?: string;
+      startDate?: string;
+      endDate?: string;
+      backedUpAfter?: string;
+      sort?: string;
+      page?: string;
+    };
     const page = Math.max(1, Number(q.page) || 1);
     const pageSize = 20;
     const { items, total } = dbq.listBackups({
       search: q.search || undefined,
       startDate: q.startDate || undefined,
       endDate: q.endDate || undefined,
+      backedUpAfter: q.backedUpAfter || undefined,
+      sort: q.sort === 'recent' ? 'recent' : 'id',
       page,
       pageSize,
     });

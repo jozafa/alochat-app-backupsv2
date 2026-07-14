@@ -142,6 +142,8 @@ export function listBackups(p: {
   search?: string;
   startDate?: string;
   endDate?: string;
+  backedUpAfter?: string;
+  sort?: 'id' | 'recent';
   page: number;
   pageSize: number;
 }): { items: ChatRow[]; total: number } {
@@ -160,12 +162,17 @@ export function listBackups(p: {
     where.push('date(begin_time) <= date(?)');
     args.push(p.endDate);
   }
+  if (p.backedUpAfter) {
+    where.push('backed_up_at >= ?');
+    args.push(p.backedUpAfter);
+  }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const orderSql = p.sort === 'recent' ? 'backed_up_at DESC' : 'id DESC';
   const total = (
     db.prepare(`SELECT COUNT(*) AS n FROM chats ${whereSql}`).get(...args) as { n: number }
   ).n;
   const items = db
-    .prepare(`SELECT * FROM chats ${whereSql} ORDER BY id DESC LIMIT ? OFFSET ?`)
+    .prepare(`SELECT * FROM chats ${whereSql} ORDER BY ${orderSql} LIMIT ? OFFSET ?`)
     .all(...args, p.pageSize, (p.page - 1) * p.pageSize) as ChatRow[];
   return { items, total };
 }

@@ -47,6 +47,20 @@ export function fmtMonth(ym: string): string {
   return name ? `${name}/${y.slice(2)}` : ym;
 }
 
+const isoDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Fortaleza' });
+
+/** Data YYYY-MM-DD em America/Fortaleza, com deslocamento opcional em dias. */
+export function isoDaysAgo(days = 0): string {
+  return isoDate.format(new Date(Date.now() - days * 86400000));
+}
+
+/** '2026-07' → { start: '2026-07-01', end: '2026-07-31' } */
+export function monthRange(ym: string): { start: string; end: string } {
+  const [y, m] = ym.split('-').map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  return { start: `${ym}-01`, end: `${ym}-${String(lastDay).padStart(2, '0')}` };
+}
+
 export function fmtDuration(start: string, end: string | null): string {
   if (!end) return '—';
   const s = Math.round((new Date(end).getTime() - new Date(start).getTime()) / 1000);

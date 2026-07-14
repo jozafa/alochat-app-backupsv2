@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type BackupsResponse, type Cleaning, type Job, type RestoreResult, type Stats } from './api';
-import { fmtBytes, fmtDate, fmtDateTime, fmtDuration, fmtMonth } from './format';
+import { fmtBytes, fmtDate, fmtDateTime, fmtDuration, fmtMonth, isoDaysAgo, monthRange } from './format';
 import type { View } from './App';
 
 const JOB_LABELS: Record<string, string> = {
@@ -31,6 +31,9 @@ export default function Dashboard({
   const [appliedSearch, setAppliedSearch] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [backedUpAfter, setBackedUpAfter] = useState('');
+  const [sort, setSort] = useState<'id' | 'recent'>('id');
+  const [queried, setQueried] = useState(false);
   const [page, setPage] = useState(1);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -41,22 +44,76 @@ export default function Dashboard({
   } | null>(null);
   const prevJobStatus = useRef<string | null>(null);
 
+  // A tabela só é carregada quando o usuário consulta (busca, filtro ou atalho).
   const loadBackups = useCallback(async () => {
+    if (!queried) return;
     const params = new URLSearchParams({ page: String(page) });
     if (appliedSearch) params.set('search', appliedSearch);
     if (startDate) params.set('startDate', startDate);
     if (endDate) params.set('endDate', endDate);
+    if (backedUpAfter) params.set('backedUpAfter', backedUpAfter);
+    if (sort !== 'id') params.set('sort', sort);
     try {
       setData(await api<BackupsResponse>(`/api/backups?${params}`));
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar backups');
     }
-  }, [page, appliedSearch, startDate, endDate]);
+  }, [queried, page, appliedSearch, startDate, endDate, backedUpAfter, sort]);
 
   useEffect(() => {
     void loadBackups();
   }, [loadBackups]);
+
+  function runSearch() {
+    setPage(1);
+    setBackedUpAfter('');
+    setSort('id');
+    setAppliedSearch(search.trim());
+    setQueried(true);
+  }
+
+  function shortcut(kind: 'lastJob' | 'today' | '7d' | '30d' | { month: string }) {
+    setSearch('');
+    setAppliedSearch('');
+    setPage(1);
+    setBackedUpAfter('');
+    setSort('id');
+    if (kind === 'lastJob') {
+      const last = stats?.jobs[0];
+      setStartDate('');
+      setEndDate('');
+      setBackedUpAfter(last?.started_at ?? '1970-01-01');
+      setSort('recent');
+    } else if (kind === 'today') {
+      setStartDate(isoDaysAgo(0));
+      setEndDate(isoDaysAgo(0));
+    } else if (kind === '7d') {
+      setStartDate(isoDaysAgo(7));
+      setEndDate(isoDaysAgo(0));
+    } else if (kind === '30d') {
+      setStartDate(isoDaysAgo(30));
+      setEndDate(isoDaysAgo(0));
+    } else {
+      const { start, end } = monthRange(kind.month);
+      setStartDate(start);
+      setEndDate(end);
+    }
+    setQueried(true);
+  }
+
+  function clearQuery() {
+    setSearch('');
+    setAppliedSearch('');
+    setStartDate('');
+    setEndDate('');
+    setBackedUpAfter('');
+    setSort('id');
+    setPage(1);
+    setQueried(false);
+    setData(null);
+    setSelected(new Set());
+  }
 
   const loadStats = useCallback(() => {
     api<Stats>('/api/stats')
@@ -316,8 +373,13 @@ export default function Dashboard({
                   </thead>
                   <tbody>
                     {stats.byMonth.map((m) => (
-                      <tr key={m.month} className="border-t border-gray-100">
-                        <td className="py-1.5 pr-2 font-medium">{fmtMonth(m.month)}</td>
+                      <tr
+                        key={m.month}
+                        onClick={() => shortcut({ month: m.month })}
+                        title="Clique para listar os backups deste mês"
+                        className="border-t border-gray-100 cursor-pointer hover:bg-blue-50"
+                      >
+                        <td className="py-1.5 pr-2 font-medium text-blue-700">{fmtMonth(m.month)}</td>
                         <td className="py-1.5 pr-2">{m.count.toLocaleString('pt-BR')}</td>
                         <td className="py-1.5">{fmtBytes(m.sizeBytes)}</td>
                       </tr>
@@ -339,10 +401,7 @@ export default function Dashboard({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  setPage(1);
-                  setAppliedSearch(search.trim());
-                }
+                if (e.key === 'Enter') runSearch();
               }}
               placeholder="Buscar por ID, nome ou número…"
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -356,6 +415,7 @@ export default function Dashboard({
               onChange={(e) => {
                 setPage(1);
                 setStartDate(e.target.value);
+                setQueried(true);
               }}
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
             />
@@ -368,15 +428,13 @@ export default function Dashboard({
               onChange={(e) => {
                 setPage(1);
                 setEndDate(e.target.value);
+                setQueried(true);
               }}
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
             />
           </div>
           <button
-            onClick={() => {
-              setPage(1);
-              setAppliedSearch(search.trim());
-            }}
+            onClick={runSearch}
             className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             Buscar
@@ -389,8 +447,39 @@ export default function Dashboard({
           </button>
         </div>
 
+        {/* Atalhos rápidos */}
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <span className="text-xs text-gray-400 mr-1">Atalhos:</span>
+          {(
+            [
+              ['lastJob', 'Último job'],
+              ['today', 'Hoje'],
+              ['7d', 'Últimos 7 dias'],
+              ['30d', 'Últimos 30 dias'],
+            ] as const
+          ).map(([kind, label]) => (
+            <button
+              key={kind}
+              onClick={() => shortcut(kind)}
+              className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+            >
+              {label}
+            </button>
+          ))}
+          {queried && (
+            <button
+              onClick={clearQuery}
+              className="rounded-full border border-gray-300 px-3 py-1 text-xs font-medium text-gray-600 hover:bg-gray-100"
+            >
+              ✕ Limpar consulta
+            </button>
+          )}
+        </div>
+
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <p className="text-sm text-blue-700">{data?.total ?? 0} chat(s) carregado(s)</p>
+          <p className="text-sm text-blue-700">
+            {queried ? `${(data?.total ?? 0).toLocaleString('pt-BR')} chat(s) carregado(s)` : ''}
+          </p>
           <div className="flex gap-2">
             <button
               onClick={runRange}
@@ -409,6 +498,17 @@ export default function Dashboard({
           </div>
         </div>
 
+        {!queried ? (
+          <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 py-14 text-center">
+            <p className="text-3xl mb-3">🔎</p>
+            <p className="text-sm font-medium text-gray-600 mb-1">Consulte os backups</p>
+            <p className="text-xs text-gray-400 max-w-md mx-auto">
+              Use a busca, os filtros de data, um atalho acima ou clique em um mês no painel
+              "Backups por mês". O catálogo completo não é carregado automaticamente.
+            </p>
+          </div>
+        ) : (
+          <>
         {/* Cards de resumo da listagem */}
         <div className="grid grid-cols-2 gap-3 mb-4">
           {[
@@ -536,6 +636,8 @@ export default function Dashboard({
             </button>
           </div>
         </div>
+          </>
+        )}
       </div>
 
       {/* Modal de restauração */}
