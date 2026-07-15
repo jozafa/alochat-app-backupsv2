@@ -15,26 +15,25 @@ A especificação completa do projeto está em `docs/AGENTS.md`.
 
 ```bash
 git clone <repo> && cd alochat-app-backupsv2
-cp .env.example .env   # preencha as variáveis
+cp .env.example .env   # defina APP_PASSWORD
 docker compose up -d --build
 ```
 
 A aplicação sobe em `http://<host>:8080`.
 
-### Variáveis de ambiente (`.env`)
+O `.env` contém apenas `APP_PASSWORD`, a senha única de acesso à UI (vazia = sem senha).
 
-| Variável | Descrição |
+### Configuração da instância e do B2
+
+Feita pela tela **Configurações** da UI após o primeiro acesso (fica salva no SQLite, no volume):
+
+| Campo | Descrição |
 |---|---|
-| `ALOCHAT_BASE_URL` | URL da instância, ex. `https://cliente.alochat.com.br` |
-| `ALOCHAT_API_KEY` | Chave global da API (Configurações → Geral na instância) |
-| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | Credenciais da application key B2 |
-| `S3_ENDPOINT` | Opcional — detectado automaticamente via `b2_authorize_account` |
-| `S3_REGION` | Opcional — detectada automaticamente |
-| `S3_BUCKET` | Opcional se a application key for restrita a um bucket (detectado); obrigatório caso contrário |
-| `APP_PASSWORD` | Senha única de acesso à UI (vazia = sem senha) |
-
-As credenciais também podem ser preenchidas/alteradas depois pela tela **Configurações** da UI
-(ficam no SQLite; as env vars servem de valor inicial).
+| URL da instância | ex. `https://cliente.alochat.com.br` |
+| Chave da API | Chave global da API (Configurações → Geral na instância AlôChat) |
+| Access Key ID / Secret | Credenciais da application key B2 |
+| Endpoint / Região | Opcionais — detectados automaticamente via `b2_authorize_account` |
+| Bucket | Opcional se a application key for restrita a um bucket (detectado); obrigatório caso contrário |
 
 ### Volume
 
